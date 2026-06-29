@@ -1,0 +1,1 @@
+"""DJ Interativo application package."""

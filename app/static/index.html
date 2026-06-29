@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DJ Interativo</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="stage" aria-label="Monitor do DJ interativo">
+        <div class="visual-column">
+          <div class="video-panel">
+            <video id="camera" autoplay muted playsinline></video>
+            <canvas id="sample" width="64" height="48" hidden></canvas>
+            <canvas id="visionSample" width="320" height="180" hidden></canvas>
+            <div class="no-camera" id="cameraFallback">
+              <strong>DJ Copilot</strong>
+              <span>Groq observa a pista. Spotify toca a escolha.</span>
+            </div>
+            <div class="vision-badge">
+              <span id="visionProvider">visão local</span>
+              <strong id="visionCountdown">--</strong>
+            </div>
+            <div class="scanline"></div>
+          </div>
+
+          <section class="setup-panel" aria-label="Configuração Spotify">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Catálogo e reprodução</p>
+                <h2>Spotify</h2>
+                <small id="spotifyStatus">Não conectado</small>
+              </div>
+              <button id="spotifyConnectButton" type="button">Conectar Spotify</button>
+            </div>
+
+            <div class="spotify-grid">
+              <label>
+                Playlist
+                <input id="playlistInput" type="url" placeholder="Cole a URL da playlist" />
+              </label>
+              <button id="playlistLoadButton" type="button">Importar playlist</button>
+              <label>
+                Dispositivo
+                <select id="deviceSelect" disabled>
+                  <option value="">Abra o Spotify em algum dispositivo</option>
+                </select>
+              </label>
+              <button id="refreshDevicesButton" type="button" disabled>Atualizar dispositivos</button>
+            </div>
+
+            <div class="catalog-header">
+              <div>
+                <strong id="playlistName">Nenhuma playlist importada</strong>
+                <span id="catalogHint">O Groq pesquisa as músicas e cria o perfil usado no match.</span>
+              </div>
+              <div class="catalog-actions">
+                <span id="catalogCount">0 faixas</span>
+                <button id="researchCatalogButton" type="button" disabled>Pesquisar com Groq</button>
+              </div>
+            </div>
+            <div class="research-progress" id="researchProgress" hidden>
+              <div id="researchProgressFill"></div>
+            </div>
+            <div id="catalog" class="catalog">
+              <p class="empty-state">Conecte o Spotify e importe uma playlist para montar o catálogo local.</p>
+            </div>
+          </section>
+        </div>
+
+        <aside class="control-panel">
+          <div>
+            <p class="eyebrow">Groq Vision + Spotify</p>
+            <h1>DJ que lê a energia da pista</h1>
+          </div>
+
+          <div class="status-grid">
+            <div>
+              <span>Energia</span>
+              <strong id="energyLevel">calma</strong>
+            </div>
+            <div>
+              <span>Movimento</span>
+              <strong id="motionScore">0.00</strong>
+            </div>
+            <div>
+              <span>Confiança IA</span>
+              <strong id="visionConfidence">--</strong>
+            </div>
+          </div>
+
+          <div class="meter" aria-label="Medidor de movimento">
+            <div id="meterFill"></div>
+          </div>
+
+          <section class="ai-reading" aria-label="Leitura da pista">
+            <span>Leitura da pista</span>
+            <p id="visionSummary">Aguardando um minuto de amostras da câmera.</p>
+            <small id="visionDetails">A IA mede atividade coletiva, não satisfação.</small>
+          </section>
+
+          <section class="now-playing" aria-label="Musica atual">
+            <span>Tocando agora</span>
+            <h2 id="trackTitle">Nenhuma faixa</h2>
+            <p id="trackDetails">Conecte um dispositivo Spotify</p>
+            <audio
+              id="player"
+              class="fallback-player"
+              controls
+              hidden
+              preload="none"
+            ></audio>
+            <a id="trackCredit" href="https://open.spotify.com/" target="_blank" rel="noreferrer">
+              Abrir no Spotify
+            </a>
+          </section>
+
+          <section class="suggestion" aria-label="Próxima sugestão">
+            <span>Próxima sugestão</span>
+            <strong id="suggestionTitle">Importe e classifique uma playlist</strong>
+            <p id="suggestionReason">O seletor procura energia próxima da leitura e evita repetições.</p>
+            <button id="playSuggestionButton" type="button" disabled>Tocar sugerida agora</button>
+          </section>
+
+          <div class="actions" aria-label="Controles">
+            <button id="startButton" type="button">Iniciar camera</button>
+            <button id="analyzeNowButton" type="button" disabled>Analisar agora</button>
+            <button id="stopButton" type="button" disabled>Parar</button>
+          </div>
+
+          <label class="auto-toggle">
+            <input id="autoDjToggle" type="checkbox" checked />
+            <span>DJ automático</span>
+            <small>Troca após duas leituras coerentes e tempo mínimo da faixa.</small>
+          </label>
+
+          <div class="simulator" aria-label="Simulador de energia">
+            <button type="button" data-level="calma">Calma</button>
+            <button type="button" data-level="media">Media</button>
+            <button type="button" data-level="alta">Alta</button>
+          </div>
+
+          <ol id="events" class="events" aria-label="Eventos recentes"></ol>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=3" type="module"></script>
+  </body>
+</html>

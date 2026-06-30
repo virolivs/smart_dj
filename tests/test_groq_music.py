@@ -136,6 +136,25 @@ class GeminiMusicResearcherTest(unittest.TestCase):
         self.assertEqual(result.title, "Resenha que cresce")
         self.assertEqual(result.phases[0].tracks[0].search_query, "Example Song Example Artist")
 
+    def test_fallback_journey_prefers_contextual_tracks_for_romantic_date(self):
+        researcher = GeminiMusicResearcher(api_key=None)
+
+        result = researcher.fallback_journey(
+            situation="date romântico em casa",
+            venue="date",
+            start_energy="calmo",
+            end_energy="mais_intenso",
+            discovery="equilibrado",
+            total_tracks=8,
+            feedback="quero algo brasileiro e romântico",
+        )
+
+        opening_tracks = result.phases[0].tracks
+        self.assertTrue(
+            any(track.genre in {"mpb", "indie pop", "pop brasileiro"} for track in opening_tracks),
+            "The opening phase should prefer contextual tracks for a romantic date prompt.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -244,23 +244,37 @@ class GeminiMusicResearcher:
         note: str = "Gemini indisponível; usando curadoria local de demonstração.",
     ) -> PlannedJourney:
         pool = self._fallback_pool(venue, discovery, feedback)
-        seed_text = f"{situation}|{venue}|{start_energy}|{end_energy}|{discovery}|{feedback}"
-        offset = sum(ord(character) for character in seed_text) % len(pool)
-        pool = pool[offset:] + pool[:offset]
+        context = self._build_context(
+            situation=situation,
+            venue=venue,
+            start_energy=start_energy,
+            end_energy=end_energy,
+            discovery=discovery,
+            feedback=feedback,
+        )
         counts = self._phase_counts(total_tracks)
         phase_specs = (
-            ("Chegada", "Abrir com faixas acessíveis e energia controlada.", 0.32),
-            ("Aquecimento", "Subir ritmo e familiaridade sem antecipar o pico.", 0.55),
-            ("Pico", "Concentrar músicas mais fortes e dançantes.", 0.84),
-            ("Fechamento", "Manter a vibe e pousar sem queda brusca.", 0.62 if end_energy != "mais_calmo" else 0.38),
+            ("Chegada", "Abrir com faixas acessíveis e energia controlada.", 0.32, 0.6),
+            ("Aquecimento", "Subir ritmo e familiaridade sem antecipar o pico.", 0.55, 0.78),
+            ("Pico", "Concentrar músicas mais fortes e dançantes.", 0.84, 0.9),
+            ("Fechamento", "Manter a vibe e pousar sem queda brusca.", 0.62 if end_energy != "mais_calmo" else 0.38, 0.65 if end_energy != "mais_calmo" else 0.45),
         )
-        cursor = 0
         phases: list[PlannedPhase] = []
-        for phase_name, intent, target in phase_specs:
+        used_tracks: set[tuple[str, str]] = set()
+        for phase_index, (phase_name, intent, target_energy, target_danceability) in enumerate(phase_specs):
             tracks: list[PlannedTrack] = []
-            for _ in range(counts[len(phases)]):
-                item = pool[cursor % len(pool)]
-                cursor += 1
+            ranked_pool = self._rank_fallback_pool(
+                pool,
+                context=context,
+                phase_name=phase_name,
+                target_energy=target_energy,
+                target_danceability=target_danceability,
+            )
+            for item in ranked_pool:
+                key = (str(item["title"]).lower(), str(item["artist"]).lower())
+                if key in used_tracks:
+                    continue
+                used_tracks.add(key)
                 tracks.append(
                     PlannedTrack(
                         title=item["title"],
@@ -269,15 +283,37 @@ class GeminiMusicResearcher:
                         danceability=item["danceability"],
                         bpm=item["bpm"],
                         genre=item["genre"],
-                        reason=f"Faixa sugerida para {phase_name.lower()} por combinar com o alvo de energia.",
+                        reason=self._phase_reason(phase_name, context, item),
                         search_query=f"{item['title']} {item['artist']}",
                     )
                 )
+                if len(tracks) >= counts[phase_index]:
+                    break
+            if len(tracks) < counts[phase_index]:
+                for item in ranked_pool:
+                    key = (str(item["title"]).lower(), str(item["artist"]).lower())
+                    if key in used_tracks:
+                        continue
+                    used_tracks.add(key)
+                    tracks.append(
+                        PlannedTrack(
+                            title=item["title"],
+                            artist=item["artist"],
+                            energy=item["energy"],
+                            danceability=item["danceability"],
+                            bpm=item["bpm"],
+                            genre=item["genre"],
+                            reason=self._phase_reason(phase_name, context, item),
+                            search_query=f"{item['title']} {item['artist']}",
+                        )
+                    )
+                    if len(tracks) >= counts[phase_index]:
+                        break
             phases.append(
                 PlannedPhase(
                     name=phase_name,
                     intent=intent,
-                    energy_target=target,
+                    energy_target=target_energy,
                     tracks=tuple(tracks),
                 )
             )
@@ -297,6 +333,118 @@ class GeminiMusicResearcher:
             )[:700],
             phases=tuple(phases),
         )
+
+    @staticmethod
+    def _build_context(
+        *,
+        situation: str,
+        venue: str,
+        start_energy: str,
+        end_energy: str,
+        discovery: str,
+        feedback: str,
+    ) -> dict[str, bool]:
+        text = " ".join(
+            [situation, venue, start_energy, end_energy, discovery, feedback]
+        ).lower()
+        return {
+            "romantic": any(keyword in text for keyword in ["romant", "date", "casal", "clima", "suave", "chill", "calmo"]),
+            "brazilian": any(keyword in text for keyword in ["brasil", "brasileiro", "funk", "pagode", "sertanejo", "arrocha", "piseiro", "baiana", "festa"]),
+            "party": any(keyword in text for keyword in ["festa", "dance", "dançar", "animado", "pico", "energia"]),
+            "workout": any(keyword in text for keyword in ["treino", "workout", "academia", "corrida", "musculação"]),
+            "study": any(keyword in text for keyword in ["estudo", "focus", "concentr", "trabalho"]),
+            "travel": any(keyword in text for keyword in ["viagem", "road", "viaj"]),
+            "discovery": discovery == "mais_descobertas",
+        }
+
+    def _rank_fallback_pool(
+        self,
+        pool: list[dict],
+        *,
+        context: dict[str, bool],
+        phase_name: str,
+        target_energy: float,
+        target_danceability: float,
+    ) -> list[dict]:
+        ranked: list[tuple[float, dict]] = []
+        for item in pool:
+            score = self._score_fallback_track(
+                item,
+                context=context,
+                phase_name=phase_name,
+                target_energy=target_energy,
+                target_danceability=target_danceability,
+            )
+            ranked.append((score, item))
+        ranked.sort(key=lambda entry: (-entry[0], str(entry[1]["title"]).lower()))
+        return [item for _, item in ranked]
+
+    def _score_fallback_track(
+        self,
+        item: dict,
+        *,
+        context: dict[str, bool],
+        phase_name: str,
+        target_energy: float,
+        target_danceability: float,
+    ) -> float:
+        energy_gap = abs(float(item["energy"]) - target_energy)
+        dance_gap = abs(float(item["danceability"]) - target_danceability)
+        score = 1.2 - (energy_gap * 1.4) - (dance_gap * 1.0)
+
+        if phase_name == "Pico":
+            score += 0.35 if float(item["energy"]) >= 0.8 else 0.0
+            score += 0.2 if float(item["danceability"]) >= 0.8 else 0.0
+        elif phase_name == "Chegada":
+            score += 0.25 if float(item["energy"]) <= 0.55 else 0.0
+            score += 0.15 if float(item["danceability"]) >= 0.7 else 0.0
+        elif phase_name == "Aquecimento":
+            score += 0.2 if 0.5 <= float(item["energy"]) <= 0.75 else 0.0
+            score += 0.1 if float(item["danceability"]) >= 0.7 else 0.0
+        elif phase_name == "Fechamento":
+            score += 0.2 if float(item["energy"]) <= 0.7 else 0.0
+            score += 0.1 if float(item["danceability"]) >= 0.6 else 0.0
+
+        if context["romantic"]:
+            if str(item["genre"]).lower() in {"mpb", "indie pop", "pop brasileiro", "pop rock", "disco"}:
+                score += 0.45
+            if phase_name in {"Chegada", "Aquecimento"} and float(item["energy"]) <= 0.65:
+                score += 0.1
+        if context["brazilian"]:
+            if str(item["genre"]).lower() in {"indie pop", "mpb", "pop brasileiro", "funk", "pagode", "pagodão baiano", "funk pop", "pop funk", "axé pop", "manguebeat"}:
+                score += 0.35
+        if context["party"]:
+            if phase_name == "Pico" and float(item["energy"]) >= 0.8:
+                score += 0.3
+            if phase_name != "Pico" and float(item["danceability"]) >= 0.75:
+                score += 0.1
+        if context["workout"]:
+            if float(item["energy"]) >= 0.75:
+                score += 0.2
+        if context["study"]:
+            if float(item["energy"]) <= 0.55 and float(item["danceability"]) <= 0.75:
+                score += 0.2
+        if context["travel"]:
+            if str(item["genre"]).lower() in {"pop", "dance pop", "disco pop", "house"}:
+                score += 0.15
+        if context["discovery"]:
+            score += 0.05
+        return score
+
+    @staticmethod
+    def _phase_reason(phase_name: str, context: dict[str, bool], item: dict) -> str:
+        reason_parts = [f"Faixa escolhida para {phase_name.lower()} por combinar com o briefing."]
+        if context["romantic"]:
+            reason_parts.append("tom mais acolhedor")
+        if context["party"]:
+            reason_parts.append("impacto de pista")
+        if context["workout"]:
+            reason_parts.append("ritmo e intensidade")
+        if context["study"]:
+            reason_parts.append("menor distração")
+        if context["travel"]:
+            reason_parts.append("fluxo de viagem")
+        return "; ".join(reason_parts)[:220]
 
     @staticmethod
     def _phase_counts(total_tracks: int) -> tuple[int, int, int, int]:

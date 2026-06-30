@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from typing import Optional
 
 
 class SessionResponse(BaseModel):
@@ -37,11 +38,11 @@ class AnalysisResponse(BaseModel):
 
 
 class AppConfigResponse(BaseModel):
-    spotify_client_id: str | None
+    spotify_client_id: Optional[str]
     groq_enabled: bool
     ai_provider: str = "gemini"
     ai_model: str
-    ai_key_fingerprint: str | None = None
+    ai_key_fingerprint: Optional[str] = None
     vision_interval_seconds: int
     min_track_seconds: int
 
@@ -55,8 +56,8 @@ class VisionAnalyzeResponse(BaseModel):
     energy: float = Field(ge=0, le=1)
     level: str
     confidence: float = Field(ge=0, le=1)
-    people_count: int | None = Field(default=None, ge=0)
-    active_ratio: float | None = Field(default=None, ge=0, le=1)
+    people_count: Optional[int] = Field(default=None, ge=0)
+    active_ratio: Optional[float] = Field(default=None, ge=0, le=1)
     summary: str
     provider: str = "groq"
 
@@ -75,7 +76,7 @@ class MusicProfileResponse(BaseModel):
     id: str
     energy: float = Field(ge=0, le=1)
     danceability: float = Field(ge=0, le=1)
-    bpm: int | None = Field(default=None, ge=40, le=240)
+    bpm: Optional[int] = Field(default=None, ge=40, le=240)
     genre: str
     confidence: float = Field(ge=0, le=1)
     reason: str
@@ -93,7 +94,7 @@ class JourneyCatalogTrack(BaseModel):
     uri: str = Field(min_length=1, max_length=200)
     energy: float = Field(default=0.5, ge=0, le=1)
     danceability: float = Field(default=0.5, ge=0, le=1)
-    bpm: int | None = Field(default=None, ge=40, le=240)
+    bpm: Optional[int] = Field(default=None, ge=40, le=240)
     genre: str = Field(default="desconhecido", max_length=80)
     confidence: float = Field(default=0.35, ge=0, le=1)
     reason: str = Field(default="Perfil estimado.", max_length=180)
@@ -116,7 +117,7 @@ class JourneyTrackResponse(BaseModel):
     uri: str
     energy: float
     danceability: float
-    bpm: int | None
+    bpm: Optional[int] = None
     genre: str
     confidence: float
     reason: str
@@ -152,7 +153,7 @@ class PlannedTrackResponse(BaseModel):
     artist: str
     energy: float = Field(ge=0, le=1)
     danceability: float = Field(ge=0, le=1)
-    bpm: int | None = Field(default=None, ge=40, le=240)
+    bpm:  Optional[int] = Field(default=None, ge=40, le=240)
     genre: str
     reason: str
     search_query: str

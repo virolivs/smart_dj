@@ -1,32 +1,33 @@
-# DJ Copilot com Groq Vision e Spotify
+# Jornada Musical com IA e Spotify
 
-Protótipo end to end que observa a atividade coletiva da pista, consulta um modelo
-multimodal da Groq a cada minuto e escolhe uma faixa de uma playlist Spotify
-desordenada.
+Protótipo que transforma uma situação descrita pelo usuário em uma fila local com
+progressão de DJ: chegada, aquecimento, pico e fechamento. Em vez de gerar só
+uma lista de músicas parecidas, o app monta uma narrativa musical e toca faixa
+por faixa com o player embutido do Spotify.
 
 ## O que o sistema faz
 
-- Mede continuamente diferença entre frames como sinal auxiliar.
-- Guarda até cinco amostras JPEG de baixa resolução no navegador.
-- A cada minuto, envia somente essas amostras para o Groq Vision.
-- Importa uma playlist Spotify sem depender da ordem das músicas.
-- Pesquisa automaticamente todas as faixas com o Groq Compound e busca na web.
-- Cria para cada música um perfil com energia, BPM, gênero, dançabilidade e
-  confiança; os resultados ficam no `localStorage` do navegador.
-- Faz o match localmente entre a leitura da câmera e os perfis musicais,
-  ponderando energia, dançabilidade, continuidade de BPM e confiança.
-- Mantém os sliders como correção manual quando a pesquisa errar.
-- Controla um dispositivo Spotify existente por OAuth PKCE.
-- Exige duas leituras coerentes e, por padrão, 120 segundos de reprodução antes
-  de uma troca automática.
-- Continua funcionando sem Groq, usando apenas a tendência de diferença entre
-  frames.
+- Conecta ao Spotify por OAuth PKCE no navegador.
+- Gera uma seleção musical do zero com Gemini 3.1 Flash Lite.
+- Busca automaticamente as faixas sugeridas no Spotify.
+- Recebe um briefing simples em formato de conversa: situação, lugar, energia
+  inicial, energia final, grau de descoberta e duração aproximada.
+- Organiza as músicas em quatro blocos:
+  - Chegada
+  - Aquecimento
+  - Pico
+  - Fechamento
+- Explica o caminho da curadoria sem mostrar uma lista gigante de músicas.
+- Permite reorganizar a curadoria por feedback textual no chat.
+- Mantém a fila gerada localmente no app.
+- Permite escolher a música atual dentro da fila local.
+- Mostra o player de música do Spotify embutido no próprio app.
 
-O token do Spotify e as URIs de reprodução permanecem no navegador. Para montar
-o perfil musical, título e artista das faixas são enviados ao backend e ao Groq
-Compound para pesquisa web.
+O token do Spotify fica no navegador. O briefing e o feedback são enviados ao
+Gemini para gerar a curadoria; as buscas de faixa são feitas diretamente na API
+do Spotify pelo navegador. O app não cria playlist na conta do usuário.
 
-## Configuracao
+## Configuração
 
 Crie um app no [Spotify for Developers](https://developer.spotify.com/dashboard)
 e cadastre exatamente a URL local como Redirect URI:
@@ -39,42 +40,69 @@ Crie um arquivo `.env` na raiz do projeto:
 
 ```dotenv
 SPOTIFY_CLIENT_ID="seu_client_id"
-GROQ_API_KEY="sua_chave_groq"
-GROQ_VISION_MODEL="meta-llama/llama-4-scout-17b-16e-instruct"
-GROQ_MUSIC_MODEL="groq/compound-mini"
+GEMINI_API_KEY="sua_chave_gemini"
+GEMINI_MUSIC_MODEL="gemini-3.1-flash-lite"
 ```
 
 Depois execute:
 
 ```bash
 python3 -m pip install -r requirements.txt
+npm --prefix frontend install
+npm --prefix frontend run build
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Configurações opcionais:
-
-```bash
-export VISION_INTERVAL_SECONDS=60
-export MIN_TRACK_SECONDS=120
-```
-
-O controle de reprodução requer uma conta Spotify Premium e um dispositivo
-Spotify aberto. Depois de conectar, importe uma URL de playlist, aguarde a
-pesquisa automática, revise os perfis se desejar e selecione o dispositivo.
-
-Ao importar uma playlist pela primeira vez, a pesquisa pode levar algum tempo:
-o navegador envia lotes de até dois títulos/artistas ao backend. Resultados já
-pesquisados são reutilizados nas próximas importações.
-
-Sem as integrações, basta executar o mesmo servidor e acessar:
+Acesse:
 
 ```text
 http://127.0.0.1:8000
 ```
 
+## Como usar
+
+1. Conecte o Spotify.
+2. Descreva a situação, por exemplo:
+
+```text
+Vou fazer uma resenha em casa com amigos. Quero começar leve, subir a energia
+aos poucos e chegar num pico dançante sem ficar pesado demais.
+```
+
+3. Clique em `Gerar playlist`.
+4. O app monta a fila local e carrega a primeira música no player.
+5. Use `Anterior`, `Próxima` ou clique numa música da fila para trocar a faixa.
+6. Leia a explicação curta e mande feedbacks pelo chat se quiser ajustar.
+
+## Frontend
+
+O frontend agora é React + TypeScript com Vite. O código fonte fica em:
+
+```text
+frontend/
+  src/App.tsx        experiência principal, Spotify OAuth e fila local
+  src/styles.css     layout e componentes visuais
+  vite.config.ts     build para app/static
+```
+
+O build gera os arquivos finais em `app/static`, que continuam sendo servidos
+pelo FastAPI.
+
+Durante desenvolvimento do frontend:
+
+```bash
+npm --prefix frontend run dev
+```
+
+Para atualizar a versão servida pelo FastAPI:
+
+```bash
+npm --prefix frontend run build
+```
+
 ## Testes
 
-Os testes usam apenas a biblioteca padrao do Python:
+Os testes usam apenas a biblioteca padrão do Python:
 
 ```bash
 python3 -m unittest discover -s tests
@@ -83,8 +111,8 @@ python3 -m unittest discover -s tests
 ## Deploy com Docker
 
 ```bash
-docker build -t dj-interativo .
-docker run -p 8000:8000 dj-interativo
+docker build -t jornada-musical .
+docker run -p 8000:8000 jornada-musical
 ```
 
 Depois acesse:
@@ -97,26 +125,25 @@ http://localhost:8000
 
 ```text
 app/
-  main.py              API FastAPI e arquivos estaticos
-  groq_vision.py       cliente multimodal e validacao das respostas
-  groq_music.py        pesquisa web e perfil musical via Groq Compound
-  domain.py            analise de movimento e selecao musical
+  main.py              API FastAPI e arquivos estáticos
+  groq_music.py        cliente musical Gemini, mantido com nome legado
+  groq_vision.py       cliente antigo de visão mantido por compatibilidade
+  domain.py            motor de jornada e lógica legada de energia
   schemas.py           contratos da API
-  static/              frontend web
+  static/              build compilado do frontend
+frontend/
+  src/                 frontend React + TypeScript
 tests/
-  test_domain.py       testes da logica principal
-  test_groq_vision.py  testes do contrato multimodal
-  test_groq_music.py   testes da pesquisa e normalizacao musical
-Dockerfile             imagem de producao
-requirements.txt       dependencias de runtime
+  test_domain.py       testes da lógica principal
+  test_groq_vision.py  testes do contrato multimodal legado
+  test_groq_music.py   testes da pesquisa e normalização musical
+Dockerfile             imagem de produção
+requirements.txt       dependências de runtime
 ```
 
 ## Privacidade e limites
 
-O sistema não reconhece rostos nem tenta inferir emoções. As imagens de baixa
-resolução são enviadas ao Groq somente durante a análise e não são persistidas
-pelo aplicativo. A leitura representa atividade corporal aparente, não prova
-que o público gostou da música.
-
-Spotify comum é destinado a uso pessoal. Este protótipo serve para demonstração;
-uso público ou comercial exige verificar licenciamento e os termos aplicáveis.
+O app não usa câmera no fluxo principal. A curadoria depende da qualidade da
+resposta da IA e da disponibilidade das faixas no Spotify. Spotify comum é
+destinado a uso pessoal; uso público ou comercial exige verificar licenciamento
+e termos aplicáveis.

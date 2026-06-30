@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -8,13 +9,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
-from .domain import DJEngine, ENERGY_LEVELS, TRACKS, AnalysisResult
-from .groq_music import GroqMusicResearcher
+from .domain import DJEngine, ENERGY_LEVELS, TRACKS, AnalysisResult, JourneyGenerator
+from .groq_music import GeminiMusicResearcher
 from .groq_vision import GroqVisionAnalyzer
 from .schemas import (
     AnalysisResponse,
     AnalyzeRequest,
     AppConfigResponse,
+    JourneyGenerateRequest,
+    JourneyPlanRequest,
+    JourneyPlanResponse,
+    JourneyResponse,
     MusicResearchRequest,
     MusicResearchResponse,
     SessionResponse,
@@ -28,16 +33,23 @@ from .schemas import (
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 app = FastAPI(
-    title="DJ Interativo",
-    description="Sistema interativo de playlist baseada em movimento do publico.",
-    version="1.0.0",
+    title="Jornada Musical",
+    description="Gerador de roteiros de playlist com progressao de energia e Spotify.",
+    version="2.0.0",
 )
 VISION_INTERVAL_SECONDS = int(os.getenv("VISION_INTERVAL_SECONDS", "60"))
 MIN_TRACK_SECONDS = int(os.getenv("MIN_TRACK_SECONDS", "120"))
 engine = DJEngine(min_seconds_between_changes=MIN_TRACK_SECONDS)
 vision_analyzer = GroqVisionAnalyzer()
-music_researcher = GroqMusicResearcher()
+music_researcher = GeminiMusicResearcher()
+journey_generator = JourneyGenerator()
 static_dir = Path(__file__).parent / "static"
+
+
+def secret_fingerprint(secret: str | None) -> str | None:
+    if not secret:
+        return None
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()[:16]
 
 
 def to_response(result: AnalysisResult) -> AnalysisResponse:
@@ -59,7 +71,9 @@ def health() -> dict[str, str]:
 def config() -> AppConfigResponse:
     return AppConfigResponse(
         spotify_client_id=os.getenv("SPOTIFY_CLIENT_ID"),
-        groq_enabled=vision_analyzer.enabled,
+        groq_enabled=music_researcher.enabled,
+        ai_model=music_researcher.model,
+        ai_key_fingerprint=secret_fingerprint(music_researcher.api_key),
         vision_interval_seconds=VISION_INTERVAL_SECONDS,
         min_track_seconds=MIN_TRACK_SECONDS,
     )
@@ -122,8 +136,90 @@ def research_music(payload: MusicResearchRequest) -> MusicResearchResponse:
         status = 503 if not music_researcher.enabled else 502
         raise HTTPException(status_code=status, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Groq music research failed") from exc
+        raise HTTPException(status_code=502, detail="Gemini music research failed") from exc
     return MusicResearchResponse(tracks=[profile.__dict__ for profile in profiles])
+
+
+@app.post("/api/journeys/generate", response_model=JourneyResponse)
+def generate_journey(payload: JourneyGenerateRequest) -> JourneyResponse:
+    try:
+        result = journey_generator.generate(
+            situation=payload.situation,
+            venue=payload.venue,
+            start_energy=payload.start_energy,
+            end_energy=payload.end_energy,
+            discovery=payload.discovery,
+            total_tracks=payload.total_tracks,
+            tracks=[track.model_dump() for track in payload.tracks],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return JourneyResponse(
+        title=result.title,
+        summary=result.summary,
+        explanation=result.explanation,
+        phases=[
+            {
+                "name": phase.name,
+                "intent": phase.intent,
+                "energy_target": phase.energy_target,
+                "tracks": [track.__dict__ for track in phase.tracks],
+            }
+            for phase in result.phases
+        ],
+    )
+
+
+@app.post("/api/journeys/plan", response_model=JourneyPlanResponse)
+def plan_journey(payload: JourneyPlanRequest) -> JourneyPlanResponse:
+    try:
+        result = music_researcher.plan_journey(
+            situation=payload.situation,
+            venue=payload.venue,
+            start_energy=payload.start_energy,
+            end_energy=payload.end_energy,
+            discovery=payload.discovery,
+            total_tracks=payload.total_tracks,
+            feedback=payload.feedback,
+        )
+    except RuntimeError as exc:
+        print(f"Gemini journey fallback: {exc}")
+        result = music_researcher.fallback_journey(
+            situation=payload.situation,
+            venue=payload.venue,
+            start_energy=payload.start_energy,
+            end_energy=payload.end_energy,
+            discovery=payload.discovery,
+            total_tracks=payload.total_tracks,
+            feedback=payload.feedback,
+            note="Não consegui usar a IA agora; montei uma curadoria local de demonstração.",
+        )
+    except Exception as exc:
+        print(f"Unexpected journey fallback: {type(exc).__name__}: {exc}")
+        result = music_researcher.fallback_journey(
+            situation=payload.situation,
+            venue=payload.venue,
+            start_energy=payload.start_energy,
+            end_energy=payload.end_energy,
+            discovery=payload.discovery,
+            total_tracks=payload.total_tracks,
+            feedback=payload.feedback,
+            note="Não consegui usar a IA agora; montei uma curadoria local de demonstração.",
+        )
+    return JourneyPlanResponse(
+        title=result.title,
+        summary=result.summary,
+        explanation=result.explanation,
+        phases=[
+            {
+                "name": phase.name,
+                "intent": phase.intent,
+                "energy_target": phase.energy_target,
+                "tracks": [track.__dict__ for track in phase.tracks],
+            }
+            for phase in result.phases
+        ],
+    )
 
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")

@@ -7,6 +7,10 @@ dist/
 build/
 .DS_Store
 .env
+frontend/node_modules/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 .agents/
 .codex/
 dj-interativo/

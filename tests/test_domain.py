@@ -1,6 +1,6 @@
 import unittest
 
-from app.domain import DJEngine, MotionAnalyzer
+from app.domain import DJEngine, JourneyGenerator, MotionAnalyzer
 
 
 class FakeClock:
@@ -77,6 +77,41 @@ class DJEngineTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             engine.analyze(session.session_id, [0, 300])
+
+
+class JourneyGeneratorTest(unittest.TestCase):
+    def test_generates_four_phase_progression(self):
+        generator = JourneyGenerator()
+        tracks = [
+            {
+                "id": f"track-{index}",
+                "name": f"Track {index}",
+                "artists": "Artist",
+                "uri": f"spotify:track:{index}",
+                "energy": min(1.0, 0.15 + index * 0.04),
+                "danceability": 0.65,
+                "bpm": 90 + index,
+                "genre": "pop",
+                "confidence": 0.8,
+                "reason": "Teste.",
+            }
+            for index in range(20)
+        ]
+
+        result = generator.generate(
+            situation="resenha que começa leve e termina animada",
+            venue="resenha",
+            start_energy="calmo",
+            end_energy="mais_intenso",
+            discovery="equilibrado",
+            total_tracks=12,
+            tracks=tracks,
+        )
+
+        self.assertEqual(len(result.phases), 4)
+        self.assertEqual(sum(len(phase.tracks) for phase in result.phases), 12)
+        self.assertIn("Resenha", result.title)
+        self.assertLess(result.phases[0].energy_target, result.phases[2].energy_target)
 
 
 if __name__ == "__main__":
